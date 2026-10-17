@@ -1,0 +1,161 @@
+
+
+const int enablepin = 9;  
+const int motorIn1 = 2;        
+const int motorIn2 = 3;  
+      
+//ultrasonic 1
+const int trigPinA = 5;        
+const int echoPinA = 4;        
+//ultrasonic 2
+const int trigPinB = 8;      
+const int echoPinB = 7;        
+
+
+const int limitButtonPin = 6;
+const int distance = 15; 
+const int speed = 200;             
+
+
+//states
+enum BridgeState { FLAT_WAITING, FOLDING_UP, HOLDING_OPEN, LOWERING_DOWN };
+//starts at flat
+BridgeState currentState = FLAT_WAITING;
+
+
+bool waitingForSensorA = false;
+bool waitingForSensorB = false;
+
+
+void setup() {
+  pinMode(enablepin, OUTPUT);
+  pinMode(motorIn1, OUTPUT);
+  pinMode(motorIn2, OUTPUT);
+
+
+  pinMode(trigPinA, OUTPUT);
+  pinMode(echoPinA, INPUT);
+  pinMode(trigPinB, OUTPUT);
+  pinMode(echoPinB, INPUT);
+
+
+  pinMode(limitButtonPin, INPUT_PULLUP);
+
+
+  stopBridge();
+  Serial.begin(9600);
+}
+
+
+void loop() {
+  long distanceA = readDistance(trigPinA, echoPinA);
+  delay(10); 
+  long distanceB = readDistance(trigPinB, echoPinB);
+
+
+  bool sensorATriggered = (distanceA > 0 && distanceA <= distance);
+  bool sensorBTriggered = (distanceB > 0 && distanceB <= distance);
+
+
+  switch (currentState) {
+   
+    case FLAT_WAITING:
+    Serial.println(sensorATriggered);
+    Serial.println(sensorBTriggered);
+      if (sensorATriggered || sensorBTriggered) {
+        if (sensorATriggered && !sensorBTriggered) {
+          Serial.println(“object detected @ sensor a");
+          waitingForSensorB = true;  
+          waitingForSensorA = false;
+        } else if (sensorBTriggered && !sensorATriggered) {
+          Serial.println("“object detected @ sensor b");
+          waitingForSensorA = true;  
+          waitingForSensorB = false;
+        } else {
+          //neither on
+          waitingForSensorA = true;
+          waitingForSensorB = true;
+        }
+       
+        raiseBridge();
+        currentState = FOLDING_UP;
+      }
+      break;
+
+
+    case FOLDING_UP:
+          if (digitalRead(limitButtonPin) == LOW) {
+        Serial.println("limit hit!");
+        stopBridge();
+        currentState = HOLDING_OPEN; 
+      }
+      break;
+
+
+    case HOLDING_OPEN:
+        if ((waitingForSensorB && sensorBTriggered) || (waitingForSensorA && sensorATriggered)) {
+          Serial.println("second sensor detected - closing");
+          lowerBridge();
+          currentState = LOWERING_DOWN;
+      }
+      break;
+
+
+    case LOWERING_DOWN:
+
+
+      delay(7000);
+      stopBridge();
+      waitingForSensorA = false;
+      waitingForSensorB = false;
+     
+      Serial.println("done! Waiting for anything else.");
+      currentState = FLAT_WAITING;
+      break;
+  }
+
+
+}
+
+
+
+
+long readDistance(int trig, int echo) {
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+ 
+  long duration = pulseIn(echo, HIGH, 30000); 
+  if (duration == 0) return 999;            
+ 
+  long distanceCm = (duration / 2) / 29.1;
+  return distanceCm;
+}
+
+
+void raiseBridge() {
+  analogWrite(enablepin, speed);
+  digitalWrite(motorIn1, HIGH);
+  digitalWrite(motorIn2, LOW);
+}
+
+
+void lowerBridge() {
+  analogWrite(enablepin, speed);
+  digitalWrite(motorIn1, LOW);
+  digitalWrite(motorIn2, HIGH);
+}
+
+
+void stopBridge() {
+  analogWrite(enablepin, 0);
+  digitalWrite(motorIn1, LOW);
+  digitalWrite(motorIn2, LOW);
+}
+
+
+
+
+
